@@ -106,10 +106,10 @@ jobs:
 
       - name: 重命名 APK
         run: |
-          APP_NAME="${{ github.event.inputs.app_name }}"
-          SAFE_NAME=$(echo "$APP_NAME" | tr ' ' '_' | tr -cd '[:alnum:]_-')
-          cp app/build/outputs/apk/debug/app-debug.apk "${SAFE_NAME}.apk"
-          echo "APK_FILE=${SAFE_NAME}.apk" >> $GITHUB_ENV
+          # 固定使用 output.apk 避免中文/特殊字符问题
+          cp app/build/outputs/apk/debug/app-debug.apk output.apk
+          echo "APK_FILE=output.apk" >> $GITHUB_ENV
+          ls -lh output.apk
 
       - name: 上传 APK artifact
         uses: actions/upload-artifact@v4
