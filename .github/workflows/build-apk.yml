@@ -64,25 +64,29 @@ jobs:
           APP_NAME="${{ github.event.inputs.app_name }}"
           PKG_PATH=$(echo $PKG | tr '.' '/')
           
-          # 更新 build.gradle 包名
+          # 1. 更新 build.gradle：applicationId + namespace
           sed -i "s|applicationId \"com.webviewapk.builder\"|applicationId \"$PKG\"|g" app/build.gradle
+          sed -i "s|namespace 'com.webviewapk.builder'|namespace '$PKG'|g" app/build.gradle
           
-          # 更新 AndroidManifest.xml
-          sed -i "s|com.webviewapk.builder|$PKG|g" app/src/main/AndroidManifest.xml
-          sed -i "s|WebView APK|$APP_NAME|g" app/src/main/AndroidManifest.xml
-          
-          # 更新 strings.xml
+          # 2. 更新 strings.xml（App名称）
           sed -i "s|WebView APK|$APP_NAME|g" app/src/main/res/values/strings.xml
           
-          # 创建目标包目录并移动 Java 文件
+          # 3. 更新 AndroidManifest.xml（仅替换 label，无 package 属性）
+          sed -i "s|WebView APK|$APP_NAME|g" app/src/main/AndroidManifest.xml
+          
+          # 4. 创建目标包目录并复制 Java 文件
           mkdir -p app/src/main/java/$PKG_PATH
-          cp app/src/main/java/com/webviewapk/builder/MainActivity.java app/src/main/java/$PKG_PATH/MainActivity.java
+          cp app/src/main/java/com/webviewapk/builder/MainActivity.java \
+             app/src/main/java/$PKG_PATH/MainActivity.java
           
-          # 更新 Java 文件中的包名和 URL
-          sed -i "s|package com.webviewapk.builder|package $PKG|g" app/src/main/java/$PKG_PATH/MainActivity.java
-          sed -i "s|PLACEHOLDER_URL|$URL|g" app/src/main/java/$PKG_PATH/MainActivity.java
+          # 5. 更新 Java 文件中的包名和 URL
+          sed -i "s|package com.webviewapk.builder;|package $PKG;|g" \
+             app/src/main/java/$PKG_PATH/MainActivity.java
+          sed -i "s|PLACEHOLDER_URL|$URL|g" \
+             app/src/main/java/$PKG_PATH/MainActivity.java
           
-          echo "源码生成完成"
+          echo "✅ 源码生成完成: pkg=$PKG url=$URL app=$APP_NAME"
+          cat app/build.gradle | grep -E "applicationId|namespace"
 
       - name: 缓存 Gradle
         uses: actions/cache@v4
