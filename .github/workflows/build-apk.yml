@@ -1,0 +1,115 @@
+name: Build WebView APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: '要打包的网页URL'
+        required: true
+        type: string
+      app_name:
+        description: 'App名称'
+        required: true
+        default: 'MyWebApp'
+        type: string
+      package_name:
+        description: '包名(英文小写+数字)'
+        required: true
+        default: 'com.webview.myapp'
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 设置 Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
+
+      - name: 生成 Gradle Wrapper
+        run: gradle wrapper --gradle-version 8.4 --distribution-type bin
+
+      - name: 注入构建参数
+        run: |
+          URL="${{ github.event.inputs.url }}"
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          PKG="${{ github.event.inputs.package_name }}"
+          
+          echo "TARGET_URL=$URL" >> $GITHUB_ENV
+          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          echo "PACKAGE_NAME=$PKG" >> $GITHUB_ENV
+          
+          # 替换包名（目录结构）
+          PKG_PATH=$(echo $PKG | tr '.' '/')
+          echo "PKG_PATH=$PKG_PATH" >> $GITHUB_ENV
+          
+          echo "构建配置: URL=$URL | APP=$APP_NAME | PKG=$PKG"
+
+      - name: 动态生成源码
+        run: |
+          PKG="${{ github.event.inputs.package_name }}"
+          URL="${{ github.event.inputs.url }}"
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          PKG_PATH=$(echo $PKG | tr '.' '/')
+          
+          # 更新 build.gradle 包名
+          sed -i "s|applicationId \"com.webviewapk.builder\"|applicationId \"$PKG\"|g" app/build.gradle
+          
+          # 更新 AndroidManifest.xml
+          sed -i "s|com.webviewapk.builder|$PKG|g" app/src/main/AndroidManifest.xml
+          sed -i "s|WebView APK|$APP_NAME|g" app/src/main/AndroidManifest.xml
+          
+          # 更新 strings.xml
+          sed -i "s|WebView APK|$APP_NAME|g" app/src/main/res/values/strings.xml
+          
+          # 创建目标包目录并移动 Java 文件
+          mkdir -p app/src/main/java/$PKG_PATH
+          cp app/src/main/java/com/webviewapk/builder/MainActivity.java app/src/main/java/$PKG_PATH/MainActivity.java
+          
+          # 更新 Java 文件中的包名和 URL
+          sed -i "s|package com.webviewapk.builder|package $PKG|g" app/src/main/java/$PKG_PATH/MainActivity.java
+          sed -i "s|PLACEHOLDER_URL|$URL|g" app/src/main/java/$PKG_PATH/MainActivity.java
+          
+          echo "源码生成完成"
+
+      - name: 缓存 Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 赋予 gradlew 执行权限
+        run: chmod +x gradlew
+
+      - name: 构建 Debug APK
+        run: ./gradlew assembleDebug --no-daemon -q
+
+      - name: 重命名 APK
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          SAFE_NAME=$(echo "$APP_NAME" | tr ' ' '_' | tr -cd '[:alnum:]_-')
+          cp app/build/outputs/apk/debug/app-debug.apk "${SAFE_NAME}.apk"
+          echo "APK_FILE=${SAFE_NAME}.apk" >> $GITHUB_ENV
+
+      - name: 上传 APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-output
+          path: ${{ env.APK_FILE }}
+          retention-days: 7
